@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { ComponentType, ReactNode } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import type { ComponentType, CSSProperties, ReactNode } from "react";
 import {
-  ArrowLeft,
-  ArrowLeftRight,
-  ArrowRight,
+  BookOpen,
   Check,
+  ChevronLeft,
+  ChevronRight,
   CircleCheck,
   CircleX,
   FolderOpen,
+  GraduationCap,
   Keyboard,
   Loader,
   Minus,
@@ -19,18 +20,22 @@ import {
   Save,
   Search,
   Send,
+  Sun,
   ThumbsDown,
   ThumbsUp,
   Trash2,
   TriangleAlert,
-  Sun,
 } from "lucide-react";
 
-/* ------------------------------------------------------------------ */
-/*  Types et utilitaires                                               */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  Constantes et utilitaires                                          */
+/* ================================================================== */
 
-type Mode = "compare" | "bad" | "good";
+const W = 440; // largeur d’une page (px)
+const H = 600; // hauteur d’une page (px)
+const NB_PAGES = 20; // 0 = couverture ... 19 = dos du livre
+const DERNIERE = NB_PAGES - 1;
+
 type Kind = "bad" | "good";
 type IconType = ComponentType<{ className?: string }>;
 
@@ -38,27 +43,6 @@ const base =
   "inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500";
 const inputCls =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200";
-
-function Panel({ kind, children }: { kind: Kind; children: ReactNode }) {
-  const bad = kind === "bad";
-  return (
-    <section
-      className={`overflow-hidden rounded-2xl border bg-white shadow-sm ${
-        bad ? "border-red-200" : "border-emerald-200"
-      }`}
-    >
-      <div
-        className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold ${
-          bad ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"
-        }`}
-      >
-        {bad ? <ThumbsDown className="h-4 w-4" /> : <ThumbsUp className="h-4 w-4" />}
-        {bad ? "Mauvaise IHM (Problème)" : "Bonne IHM (Solution)"}
-      </div>
-      <div className="relative p-4">{children}</div>
-    </section>
-  );
-}
 
 function Reinit({ onClick }: { onClick: () => void }) {
   return (
@@ -100,30 +84,23 @@ function Champ({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Règle 1 : Le contrôle explicite                                    */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  Démos : Règle 1 (contrôle explicite)                               */
+/* ================================================================== */
 
-const FICHIERS = [
-  "Rapport_final.pdf",
-  "Photos_vacances.zip",
-  "Budget_2026.xlsx",
-  "Notes_cours_IHM.docx",
-];
+const FICHIERS = ["Rapport_final.pdf", "Photos_vacances.zip", "Budget_2026.xlsx", "Notes_cours_IHM.docx"];
 
 function Regle1Mauvaise() {
   const [items, setItems] = useState<string[]>(FICHIERS);
   return (
     <div className="space-y-3">
-      <p className="text-sm text-slate-600">
-        Passez simplement la souris sur un fichier pour voir ce qui se passe…
-      </p>
+      <p className="text-sm text-slate-600">Passez simplement la souris sur un fichier…</p>
       <ul className="space-y-2">
         {items.map((f) => (
           <li
             key={f}
             onMouseEnter={() => setItems((p) => p.filter((x) => x !== f))}
-            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"
           >
             {f}
           </li>
@@ -131,7 +108,7 @@ function Regle1Mauvaise() {
       </ul>
       {items.length === 0 && (
         <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-          Tous vos fichiers ont disparu, sans aucune demande de votre part. Impossible de revenir en arrière.
+          Tous les fichiers ont disparu sans aucune demande. Impossible de revenir en arrière.
         </p>
       )}
       <Reinit onClick={() => setItems(FICHIERS)} />
@@ -144,14 +121,12 @@ function Regle1Bonne() {
   const [cible, setCible] = useState<string | null>(null);
   return (
     <div className="space-y-3">
-      <p className="text-sm text-slate-600">
-        La suppression exige un clic explicite, puis une confirmation.
-      </p>
+      <p className="text-sm text-slate-600">La suppression exige un clic, puis une confirmation.</p>
       <ul className="space-y-2">
         {items.map((f) => (
           <li
             key={f}
-            className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800"
+            className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"
           >
             {f}
             <button
@@ -165,17 +140,15 @@ function Regle1Bonne() {
           </li>
         ))}
       </ul>
-      {items.length === 0 && (
-        <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-600">Liste vide.</p>
-      )}
+      {items.length === 0 && <p className="rounded-lg bg-slate-100 p-3 text-sm text-slate-600">Liste vide.</p>}
       <Reinit onClick={() => setItems(FICHIERS)} />
       {cible !== null && (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
         >
-          <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl">
+          <div className="w-full max-w-xs rounded-2xl bg-white p-5 shadow-xl">
             <h3 className="text-base font-semibold text-slate-900">Confirmer la suppression</h3>
             <p className="mt-2 text-sm text-slate-600">
               Voulez-vous vraiment supprimer « {cible} » ? Cette action est définitive.
@@ -206,9 +179,9 @@ function Regle1Bonne() {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Règle 2 : Le contexte                                              */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  Démos : Règle 2 (contexte)                                         */
+/* ================================================================== */
 
 type Donnees = { nom: string; email: string; ville: string; adresse: string; qte: number };
 type ChampTexte = "nom" | "email" | "ville" | "adresse";
@@ -275,8 +248,8 @@ function Formulaire({ persiste }: { persiste: boolean }) {
       )}
       {etape === 2 && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between rounded-lg border border-slate-200 p-3 text-sm text-slate-800">
-            <span>Livre « Interaction Homme-Machine »</span>
+          <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-800">
+            <span>Livre « IHM »</span>
             <span className="flex items-center gap-2">
               <button
                 type="button"
@@ -297,7 +270,7 @@ function Formulaire({ persiste }: { persiste: boolean }) {
               </button>
             </span>
           </div>
-          <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+          <p className="rounded-lg bg-white p-3 text-xs text-slate-600">
             Récapitulatif : {d.nom || "—"} · {d.email || "—"} · {d.ville || "—"} · {d.adresse || "—"}
           </p>
         </div>
@@ -310,7 +283,7 @@ function Formulaire({ persiste }: { persiste: boolean }) {
         </p>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <button
           type="button"
           disabled={etape === 0}
@@ -324,7 +297,7 @@ function Formulaire({ persiste }: { persiste: boolean }) {
           onClick={effacerSiBesoin}
           className="text-xs text-slate-500 underline hover:text-slate-800"
         >
-          Actualiser la page (simulation)
+          Actualiser (simulation)
         </button>
         <button
           type="button"
@@ -346,17 +319,15 @@ function Regle2Bonne() {
   return <Formulaire persiste />;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Règle 3 : La rétroaction                                           */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  Démos : Règle 3 (rétroaction)                                      */
+/* ================================================================== */
 
 function Regle3Mauvaise() {
   const [clics, setClics] = useState(0);
   return (
     <div className="space-y-4">
-      <p className="text-sm text-slate-600">
-        Cliquez sur « Envoyer ». Le message est-il parti ? Impossible à savoir…
-      </p>
+      <p className="text-sm text-slate-600">Cliquez sur « Envoyer ». Le message est-il parti ? Impossible à savoir…</p>
       <button
         type="button"
         onClick={() => setClics((c) => c + 1)}
@@ -394,9 +365,7 @@ function Regle3Bonne() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-slate-600">
-        Survolez, cliquez : le bouton réagit à chaque étape.
-      </p>
+      <p className="text-sm text-slate-600">Survolez, cliquez : le bouton réagit à chaque étape.</p>
       <button
         type="button"
         onClick={envoyer}
@@ -427,9 +396,9 @@ function Regle3Bonne() {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Règle 4 : La cohérence                                             */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  Démos : Règle 4 (cohérence)                                        */
+/* ================================================================== */
 
 function Carte({ titre, texte, children }: { titre: string; texte: string; children: ReactNode }) {
   return (
@@ -488,9 +457,9 @@ function Regle4Bonne() {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Règle 5 : La souplesse                                             */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  Démos : Règle 5 (souplesse)                                        */
+/* ================================================================== */
 
 function Regle5Mauvaise() {
   const [niveau, setNiveau] = useState(0);
@@ -504,9 +473,7 @@ function Regle5Mauvaise() {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-slate-600">
-        Pour ajouter une tâche : Fichier, puis Tâches, puis Nouvelle tâche. Aucun raccourci.
-      </p>
+      <p className="text-sm text-slate-600">Ajouter une tâche : Fichier, puis Tâches, puis Nouvelle tâche. Aucun raccourci.</p>
       <div className="flex items-start gap-1 text-sm">
         <div className="relative">
           <button
@@ -558,7 +525,7 @@ function Regle5Mauvaise() {
           </div>
         )}
       </div>
-      <ul className="min-h-[5rem] space-y-1 rounded-lg border border-dashed border-slate-300 p-2 text-sm text-slate-800">
+      <ul className="min-h-[5rem] space-y-1 rounded-lg border border-dashed border-slate-300 bg-white p-2 text-sm text-slate-800">
         {taches.length === 0 && <li className="text-slate-400">Aucune tâche</li>}
         {taches.map((t) => (
           <li key={t}>{t}</li>
@@ -576,18 +543,19 @@ function Regle5Bonne() {
   const [texte, setTexte] = useState("");
   const [sombre, setSombre] = useState(false);
   const [taille, setTaille] = useState(1);
-  const ref = useRef<HTMLInputElement>(null);
+  const [champ, setChamp] = useState<HTMLInputElement | null>(null);
 
   useEffect(() => {
+    if (champ === null) return;
     const h = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        ref.current?.focus();
+        champ.focus();
       }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, []);
+  }, [champ]);
 
   const ajouter = () => {
     const t = texte.trim();
@@ -599,15 +567,11 @@ function Regle5Bonne() {
   return (
     <div
       className={`space-y-3 rounded-xl p-3 ${TAILLES[taille]} ${
-        sombre ? "bg-slate-900 text-slate-100" : "bg-slate-50 text-slate-800"
+        sombre ? "bg-slate-900 text-slate-100" : "bg-white text-slate-800"
       }`}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setSombre((s) => !s)}
-          className={`${base} border border-slate-400 py-1`}
-        >
+        <button type="button" onClick={() => setSombre((s) => !s)} className={`${base} border border-slate-400 py-1`}>
           {sombre ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           {sombre ? "Mode clair" : "Mode sombre"}
         </button>
@@ -628,7 +592,7 @@ function Regle5Bonne() {
       </div>
       <div className="flex gap-2">
         <input
-          ref={ref}
+          ref={setChamp}
           value={texte}
           onChange={(e) => setTexte(e.target.value)}
           onKeyDown={(e) => {
@@ -659,7 +623,7 @@ function Regle5Bonne() {
       </ul>
       <p className="flex flex-wrap items-center gap-2 text-xs opacity-80">
         <Keyboard className="h-4 w-4" />
-        <kbd className="rounded border border-slate-400 px-1">Ctrl+K</kbd> rechercher/saisir
+        <kbd className="rounded border border-slate-400 px-1">Ctrl+K</kbd> saisir
         <kbd className="rounded border border-slate-400 px-1">Entrée</kbd> ajouter
         <kbd className="rounded border border-slate-400 px-1">Échap</kbd> effacer
       </p>
@@ -667,9 +631,9 @@ function Regle5Bonne() {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Règle 6 : L’anticipation / prévention des erreurs                  */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  Démos : Règle 6 (prévention des erreurs)                           */
+/* ================================================================== */
 
 function Regle6Mauvaise() {
   const [email, setEmail] = useState("");
@@ -678,8 +642,7 @@ function Regle6Mauvaise() {
   const [resultat, setResultat] = useState<"aucun" | "erreur" | "ok">("aucun");
 
   const envoyer = () => {
-    const valide =
-      email.includes("@") && /^\d{2}\/\d{2}\/\d{4}$/.test(date) && mdp.length >= 8;
+    const valide = email.includes("@") && /^\d{2}\/\d{2}\/\d{4}$/.test(date) && mdp.length >= 8;
     setResultat(valide ? "ok" : "erreur");
   };
 
@@ -710,7 +673,7 @@ function Regle6Bonne() {
 
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
   const criteres = [
-    { ok: mdp.length >= 8, texte: "Au moins 8 caractères" },
+    { ok: mdp.length >= 8, texte: "8 caractères minimum" },
     { ok: /[A-Z]/.test(mdp), texte: "Une majuscule" },
     { ok: /\d/.test(mdp), texte: "Un chiffre" },
     { ok: /[^A-Za-z0-9]/.test(mdp), texte: "Un caractère spécial" },
@@ -724,7 +687,15 @@ function Regle6Bonne() {
   return (
     <div className="space-y-3">
       <div>
-        <Champ label="E-mail" value={email} onChange={(v) => { setFait(false); setEmail(v); }} placeholder="nom@exemple.dz" />
+        <Champ
+          label="E-mail"
+          value={email}
+          onChange={(v) => {
+            setFait(false);
+            setEmail(v);
+          }}
+          placeholder="nom@exemple.dz"
+        />
         {email !== "" && (
           <p className={`mt-1 text-xs ${emailOk ? "text-emerald-600" : "text-red-600"}`}>
             {emailOk ? "Format valide" : "Format attendu : nom@domaine.dz"}
@@ -738,12 +709,23 @@ function Regle6Bonne() {
           min={aujourdhui}
           value={date}
           suppressHydrationWarning
-          onChange={(e) => { setFait(false); setDate(e.target.value); }}
+          onChange={(e) => {
+            setFait(false);
+            setDate(e.target.value);
+          }}
           className={inputCls}
         />
       </label>
       <div>
-        <Champ label="Mot de passe" type="password" value={mdp} onChange={(v) => { setFait(false); setMdp(v); }} />
+        <Champ
+          label="Mot de passe"
+          type="password"
+          value={mdp}
+          onChange={(v) => {
+            setFait(false);
+            setMdp(v);
+          }}
+        />
         <div className="mt-2 h-2 overflow-hidden rounded bg-slate-200">
           <div className={`h-full transition-all ${couleurs[score]}`} style={{ width: `${(score / 4) * 100}%` }} />
         </div>
@@ -765,26 +747,17 @@ function Regle6Bonne() {
       >
         Réserver
       </button>
-      {!valide && (
-        <p className="text-xs text-slate-500">Le bouton s’active quand tous les champs sont valides.</p>
-      )}
-      {fait && (
-        <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">Réservation enregistrée.</p>
-      )}
+      {!valide && <p className="text-xs text-slate-500">Le bouton s’active quand tous les champs sont valides.</p>}
+      {fait && <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">Réservation enregistrée.</p>}
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Règle 7 : La métaphore                                             */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  Démos : Règle 7 (métaphore)                                        */
+/* ================================================================== */
 
-const ACTIONS_OBSCURES = [
-  { code: "EXEC_01" },
-  { code: "RM -RF" },
-  { code: "0xA3F" },
-  { code: "◢⬡◣" },
-];
+const ACTIONS_OBSCURES = ["EXEC_01", "RM -RF", "0xA3F", "◢⬡◣"];
 
 const ACTIONS_CLAIRES: { label: string; Icon: IconType; msg: string }[] = [
   { label: "Corbeille", Icon: Trash2, msg: "Le fichier a été déplacé dans la corbeille." },
@@ -799,18 +772,18 @@ function Regle7Mauvaise() {
     <div className="space-y-3">
       <p className="text-sm text-slate-600">Quelle commande sauvegarde ? Laquelle supprime ?</p>
       <div className="flex flex-wrap gap-2">
-        {ACTIONS_OBSCURES.map((a) => (
+        {ACTIONS_OBSCURES.map((code) => (
           <button
-            key={a.code}
+            key={code}
             type="button"
-            onClick={() => setDernier(a.code)}
+            onClick={() => setDernier(code)}
             className="rounded border border-slate-500 bg-slate-800 px-3 py-2 font-mono text-xs text-green-400 hover:bg-slate-700"
           >
-            {a.code}
+            {code}
           </button>
         ))}
       </div>
-      <p className="rounded-lg bg-slate-100 p-3 font-mono text-xs text-slate-700">
+      <p className="rounded-lg bg-white p-3 font-mono text-xs text-slate-700">
         {dernier === null ? "Aucune action." : `${dernier} → résultat : ???`}
       </p>
     </div>
@@ -828,7 +801,7 @@ function Regle7Bonne() {
             key={label}
             type="button"
             onClick={() => setMsg(m)}
-            className="flex w-24 flex-col items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-3 text-xs text-slate-700 hover:border-indigo-400 hover:bg-indigo-50"
+            className="flex w-[4.9rem] flex-col items-center gap-1 rounded-lg border border-slate-200 bg-white px-1 py-3 text-xs text-slate-700 hover:border-indigo-400 hover:bg-indigo-50"
           >
             <Icon className="h-6 w-6 text-indigo-600" />
             {label}
@@ -840,15 +813,15 @@ function Regle7Bonne() {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Définition des règles                                              */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  Données des règles                                                 */
+/* ================================================================== */
 
 type Regle = {
   id: number;
   titre: string;
   court: string;
-  regle: string;
+  definition: string;
   probleme: string;
   solution: string;
   Mauvaise: ComponentType;
@@ -860,9 +833,10 @@ const REGLES: Regle[] = [
     id: 1,
     titre: "Le contrôle explicite",
     court: "Contrôle explicite",
-    regle: "Le système n’exécute une action que sur demande explicite de l’utilisateur, qui garde la maîtrise du dialogue.",
-    probleme: "Une simple action de survol supprime un fichier, sans demande ni possibilité d’annuler.",
-    solution: "Un bouton clair déclenche l’action, puis une fenêtre de confirmation demande de valider.",
+    definition:
+      "Le système n’exécute une action que si l’utilisateur la demande clairement. L’utilisateur garde l’initiative du dialogue et peut toujours revenir en arrière.",
+    probleme: "Un simple survol de la souris supprime un fichier : aucune demande, aucune confirmation, aucun retour possible.",
+    solution: "Un bouton « Supprimer » explicite, suivi d’une fenêtre de confirmation avant toute action critique.",
     Mauvaise: Regle1Mauvaise,
     Bonne: Regle1Bonne,
   },
@@ -870,9 +844,10 @@ const REGLES: Regle[] = [
     id: 2,
     titre: "Le contexte",
     court: "Contexte",
-    regle: "Le système conserve l’état de la tâche en cours : ce que l’utilisateur a saisi ne doit jamais se perdre.",
-    probleme: "Changer d’étape ou actualiser la page efface toutes les données déjà saisies.",
-    solution: "Les données sont conservées automatiquement entre les étapes, avec un badge « Auto-sauvegardé ».",
+    definition:
+      "Le système tient compte de l’état de la tâche en cours et conserve les données saisies, d’une étape à l’autre.",
+    probleme: "Passer à l’étape suivante ou actualiser la page efface tout le formulaire : il faut tout ressaisir.",
+    solution: "Les données sont conservées automatiquement, et un badge « Auto-sauvegardé » rassure l’utilisateur.",
     Mauvaise: Regle2Mauvaise,
     Bonne: Regle2Bonne,
   },
@@ -880,9 +855,10 @@ const REGLES: Regle[] = [
     id: 3,
     titre: "La rétroaction (feedback)",
     court: "Rétroaction",
-    regle: "Chaque action de l’utilisateur doit recevoir une réponse visible et immédiate du système.",
-    probleme: "Le bouton ne montre aucun changement : l’utilisateur doute et clique encore et encore.",
-    solution: "Effet au survol et au clic, indicateur de chargement, puis message vert de succès.",
+    definition:
+      "Chaque action de l’utilisateur reçoit une réponse visible et immédiate : survol, clic, chargement, succès ou échec.",
+    probleme: "Le bouton ne réagit pas : l’utilisateur doute, clique plusieurs fois et finit par se frustrer.",
+    solution: "Effet au survol et au clic, indicateur de chargement, puis notification verte de succès.",
     Mauvaise: Regle3Mauvaise,
     Bonne: Regle3Bonne,
   },
@@ -890,9 +866,10 @@ const REGLES: Regle[] = [
     id: 4,
     titre: "La cohérence",
     court: "Cohérence",
-    regle: "Les mêmes actions ont le même aspect, la même place et le même comportement dans toute l’application.",
-    probleme: "Couleurs, icônes et positions des boutons changent d’une carte à l’autre.",
-    solution: "Un système de design unique : Supprimer en rouge à gauche, Valider en vert à droite.",
+    definition:
+      "Les mêmes éléments ont le même aspect, la même place et le même comportement dans toute l’application.",
+    probleme: "Couleurs, icônes et positions des boutons changent d’une carte à l’autre : on ne sait plus où cliquer.",
+    solution: "Un système de design unique : « Supprimer » en rouge avec une corbeille à gauche, « Valider » en vert à droite.",
     Mauvaise: Regle4Mauvaise,
     Bonne: Regle4Bonne,
   },
@@ -900,9 +877,10 @@ const REGLES: Regle[] = [
     id: 5,
     titre: "La souplesse (flexibilité)",
     court: "Souplesse",
-    regle: "Le système s’adapte aux débutants comme aux experts, et à leurs préférences.",
-    probleme: "Tout passe par des menus imbriqués à la souris : lent, sans raccourci, sans réglage.",
-    solution: "Boutons pour les débutants, raccourcis clavier pour les experts, thème et taille du texte réglables.",
+    definition:
+      "L’interface s’adapte au niveau de l’utilisateur : accès simple pour les débutants, raccourcis rapides pour les experts, réglages personnalisables.",
+    probleme: "Tout passe par des menus imbriqués à la souris : lent, répétitif, sans raccourci ni réglage.",
+    solution: "Boutons visibles et raccourcis clavier (Ctrl+K, Entrée, Échap), thème clair ou sombre, taille du texte.",
     Mauvaise: Regle5Mauvaise,
     Bonne: Regle5Bonne,
   },
@@ -910,169 +888,531 @@ const REGLES: Regle[] = [
     id: 6,
     titre: "L’anticipation (prévention des erreurs)",
     court: "Prévention des erreurs",
-    regle: "Il vaut mieux empêcher l’erreur que la signaler après coup : le système guide l’utilisateur en amont.",
-    probleme: "Saisie libre, champs vides acceptés et message d’erreur incompréhensible après l’envoi.",
-    solution: "Validation en temps réel, bouton désactivé tant que tout n’est pas valide, sélecteur de date.",
+    definition: "Le système prévient l’erreur avant qu’elle ne survienne, plutôt que de la signaler après coup.",
+    probleme: "Champs libres, date tapée à la main et message cryptique « Error 400 » après l’envoi.",
+    solution: "Validation en temps réel, bouton désactivé tant que le formulaire est invalide, sélecteur de date, jauge de mot de passe.",
     Mauvaise: Regle6Mauvaise,
     Bonne: Regle6Bonne,
   },
   {
     id: 7,
-    titre: "La métaphore (analogie)",
+    titre: "La métaphore",
     court: "Métaphore",
-    regle: "L’interface s’appuie sur des objets du monde réel que l’utilisateur connaît déjà.",
-    probleme: "Des codes techniques et des symboles abstraits dont personne ne devine la fonction.",
-    solution: "Corbeille, dossier, disquette et loupe : le sens est compris au premier regard.",
+    definition: "L’interface s’appuie sur des analogies avec le monde réel que l’utilisateur connaît déjà.",
+    probleme: "Commandes techniques (EXEC_01, RM -RF) et symboles abstraits dont personne ne devine le sens.",
+    solution: "Corbeille, dossier, disquette, loupe : le sens est compris au premier regard.",
     Mauvaise: Regle7Mauvaise,
     Bonne: Regle7Bonne,
   },
 ];
 
-/* ------------------------------------------------------------------ */
-/*  Page                                                               */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  Pages du livre                                                     */
+/* ================================================================== */
 
-const MODES: { id: Mode; label: string; Icon: IconType }[] = [
-  { id: "compare", label: "Côte à côte", Icon: ArrowLeftRight },
-  { id: "bad", label: "Mauvaise IHM", Icon: ThumbsDown },
-  { id: "good", label: "Bonne IHM", Icon: ThumbsUp },
-];
+function Feuille({ num, children }: { num: number; children: ReactNode }) {
+  const gauche = num % 2 === 1;
+  return (
+    <div className="relative h-full w-full overflow-hidden bg-[#fbfcfe] text-slate-800">
+      <div
+        className={`pointer-events-none absolute inset-y-0 w-10 from-slate-900/10 to-transparent ${
+          gauche ? "right-0 bg-gradient-to-l" : "left-0 bg-gradient-to-r"
+        }`}
+      />
+      <div className="relative flex h-full flex-col px-7 pb-10 pt-7">{children}</div>
+      <span className="pointer-events-none absolute bottom-3 left-0 right-0 text-center font-serif text-[11px] text-slate-400">
+        {num}
+      </span>
+    </div>
+  );
+}
+
+function Couverture({ onOpen }: { onOpen: () => void }) {
+  return (
+    <div className="relative flex h-full w-full flex-col items-center justify-between overflow-hidden bg-gradient-to-br from-[#0b1b3a] via-[#143270] to-[#0b1b3a] p-8 text-center text-white">
+      <div className="pointer-events-none absolute inset-3 rounded-md border border-amber-300/40" />
+      <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-black/40 to-transparent" />
+      <div className="relative mt-3 flex flex-col items-center gap-3">
+        <span className="flex h-14 w-14 items-center justify-center rounded-full border border-amber-300/60 bg-white/5">
+          <GraduationCap className="h-7 w-7 text-amber-300" />
+        </span>
+        <p className="font-serif text-lg font-semibold leading-snug">Université Chadli Bendjedid</p>
+        <p className="font-serif text-base text-blue-100">El Tarf</p>
+      </div>
+      <div className="relative space-y-3">
+        <p className="text-sm text-blue-200">Module : Interaction Homme-Machine (IHM)</p>
+        <h2 className="font-serif text-[2rem] font-bold leading-tight">
+          Les 7 Règles
+          <br />
+          de Joëlle Coutaz
+        </h2>
+        <div className="flex justify-center gap-1.5">
+          {REGLES.map((r) => (
+            <span key={r.id} className="h-1.5 w-1.5 rounded-full bg-amber-300" />
+          ))}
+        </div>
+        <p className="text-xs text-blue-200">Sujet : Les 7 Règles de Joëlle Coutaz</p>
+      </div>
+      <div className="relative mb-2 space-y-2 text-sm">
+        <p className="text-blue-200">Réalisé par :</p>
+        <p className="font-serif text-base font-semibold">Ghersallah Chahinez &amp; Laouami Tasnim</p>
+        <p className="text-xs text-blue-200">Niveau : Licence 3 Informatique (Groupe 3) | Année : 2026/2027</p>
+        <button
+          type="button"
+          onClick={onOpen}
+          className="mt-3 inline-flex items-center gap-2 rounded-full bg-amber-300 px-4 py-2 text-sm font-semibold text-[#0b1b3a] transition hover:bg-amber-200"
+        >
+          <BookOpen className="h-4 w-4" />
+          Ouvrir le livre
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Sommaire({ go }: { go: (p: number) => void }) {
+  const lignes: { label: string; page: number }[] = [
+    { label: "Introduction", page: 2 },
+    ...REGLES.map((r) => ({ label: `Règle ${r.id} : ${r.court}`, page: 2 * r.id + 1 })),
+    { label: "Conclusion", page: 17 },
+  ];
+  return (
+    <>
+      <h2 className="font-serif text-2xl font-bold text-slate-900">Sommaire</h2>
+      <p className="mt-1 text-[13px] text-slate-500">Cliquez sur une ligne pour aller directement à la page.</p>
+      <ul className="mt-5 space-y-1">
+        {lignes.map((l) => (
+          <li key={l.label}>
+            <button
+              type="button"
+              onClick={() => go(l.page)}
+              className="flex w-full items-baseline gap-2 rounded-md px-2 py-2 text-left text-[14px] text-slate-800 transition hover:bg-indigo-50"
+            >
+              <span>{l.label}</span>
+              <span className="flex-1 border-b border-dotted border-slate-300" />
+              <span className="font-serif text-slate-500">{l.page}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+function Introduction() {
+  const atouts = [
+    { titre: "Efficacité", texte: "Les tâches se font plus vite, avec moins d’efforts." },
+    { titre: "Fiabilité", texte: "Moins d’erreurs, et des erreurs plus faciles à corriger." },
+    { titre: "Satisfaction", texte: "Une interface comprise sans mode d’emploi donne confiance." },
+  ];
+  return (
+    <>
+      <h2 className="font-serif text-2xl font-bold text-slate-900">Introduction</h2>
+      <p className="mt-3 text-[13px] leading-relaxed text-slate-700">
+        Une interface n’est pas un simple écran : c’est le lieu où l’humain et la machine se rencontrent.
+        Joëlle Coutaz, chercheuse française de référence en Interaction Homme-Machine, propose{" "}
+        <strong>sept règles</strong> qui guident la conception d’interfaces utilisables, compréhensibles et agréables.
+      </p>
+      <p className="mt-3 text-[13px] leading-relaxed text-slate-700">
+        Ces règles ont un point commun : <strong>placer l’humain au centre de la conception</strong>. Ce n’est pas à
+        l’utilisateur de s’adapter au système, c’est au système de s’adapter à ses besoins, à ses gestes et à ses
+        erreurs.
+      </p>
+      <h3 className="mt-5 font-serif text-base font-semibold text-slate-900">Pourquoi l’humain au centre ?</h3>
+      <ul className="mt-2 space-y-2">
+        {atouts.map((a) => (
+          <li key={a.titre} className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-[13px]">
+            <strong className="text-indigo-900">{a.titre}.</strong>{" "}
+            <span className="text-slate-700">{a.texte}</span>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+function PageRegle({ regle }: { regle: Regle }) {
+  return (
+    <>
+      <div className="flex items-center gap-3">
+        <span className="font-serif text-5xl font-bold leading-none text-indigo-700">{regle.id}</span>
+        <div>
+          <p className="text-xs text-slate-500">Règle {regle.id} sur 7</p>
+          <h2 className="font-serif text-xl font-bold leading-tight text-slate-900">{regle.titre}</h2>
+        </div>
+      </div>
+      <div className="mt-4 space-y-3 text-[13px] leading-relaxed">
+        <section className="rounded-lg border-l-4 border-indigo-600 bg-indigo-50/60 p-3">
+          <h3 className="font-semibold text-indigo-900">La règle (définition)</h3>
+          <p className="mt-1 text-slate-700">{regle.definition}</p>
+        </section>
+        <section className="rounded-lg border-l-4 border-red-500 bg-red-50/70 p-3">
+          <h3 className="flex items-center gap-1 font-semibold text-red-800">
+            <ThumbsDown className="h-3.5 w-3.5" />
+            Le problème (mauvaise IHM)
+          </h3>
+          <p className="mt-1 text-slate-700">{regle.probleme}</p>
+        </section>
+        <section className="rounded-lg border-l-4 border-emerald-600 bg-emerald-50/70 p-3">
+          <h3 className="flex items-center gap-1 font-semibold text-emerald-800">
+            <ThumbsUp className="h-3.5 w-3.5" />
+            La solution (bonne IHM)
+          </h3>
+          <p className="mt-1 text-slate-700">{regle.solution}</p>
+        </section>
+      </div>
+    </>
+  );
+}
+
+function PageDemo({ regle }: { regle: Regle }) {
+  const [vue, setVue] = useState<Kind>("bad");
+  const { Mauvaise, Bonne } = regle;
+  const mauvaise = vue === "bad";
+  return (
+    <>
+      <h2 className="font-serif text-xl font-bold text-slate-900">Essayez-la vous-même</h2>
+      <p className="mt-1 text-[13px] text-slate-500">Règle {regle.id} : {regle.court}</p>
+      <div role="group" aria-label="Choisir la version" className="mt-3 flex rounded-lg bg-slate-100 p-1 text-sm">
+        <button
+          type="button"
+          onClick={() => setVue("bad")}
+          aria-pressed={mauvaise}
+          className={`flex flex-1 items-center justify-center gap-1 rounded-md py-1.5 font-medium transition ${
+            mauvaise ? "bg-red-600 text-white shadow" : "text-slate-600 hover:bg-slate-200"
+          }`}
+        >
+          <ThumbsDown className="h-4 w-4" />
+          Mauvaise IHM
+        </button>
+        <button
+          type="button"
+          onClick={() => setVue("good")}
+          aria-pressed={!mauvaise}
+          className={`flex flex-1 items-center justify-center gap-1 rounded-md py-1.5 font-medium transition ${
+            !mauvaise ? "bg-emerald-600 text-white shadow" : "text-slate-600 hover:bg-slate-200"
+          }`}
+        >
+          <ThumbsUp className="h-4 w-4" />
+          Bonne IHM
+        </button>
+      </div>
+      <div
+        className={`mt-3 flex-1 overflow-y-auto rounded-xl border p-3 ${
+          mauvaise ? "border-red-200 bg-red-50/50" : "border-emerald-200 bg-emerald-50/50"
+        }`}
+      >
+        {mauvaise ? <Mauvaise /> : <Bonne />}
+      </div>
+    </>
+  );
+}
+
+function Conclusion() {
+  const resume = [
+    "Garder la main sur les actions",
+    "Conserver le contexte de la tâche",
+    "Répondre à chaque geste",
+    "Rester cohérent partout",
+    "S’adapter aux novices et aux experts",
+    "Prévenir l’erreur avant qu’elle arrive",
+    "Parler le langage du monde réel",
+  ];
+  return (
+    <>
+      <h2 className="font-serif text-2xl font-bold text-slate-900">Conclusion</h2>
+      <p className="mt-3 text-[13px] leading-relaxed text-slate-700">
+        Les sept règles de Joëlle Coutaz ne sont pas des contraintes techniques : ce sont des engagements envers
+        l’utilisateur. Appliquées ensemble, elles transforment une application qui « fonctionne » en application qui
+        « se comprend ».
+      </p>
+      <ol className="mt-3 space-y-1.5">
+        {resume.map((t, i) => (
+          <li key={t} className="flex items-center gap-2 text-[13px] text-slate-700">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-700 text-[11px] font-bold text-white">
+              {i + 1}
+            </span>
+            {t}
+          </li>
+        ))}
+      </ol>
+      <p className="mt-4 rounded-lg bg-indigo-50 p-3 font-serif text-[14px] italic leading-relaxed text-indigo-900">
+        Concevoir une bonne IHM, c’est d’abord comprendre l’humain avant de coder la machine.
+      </p>
+    </>
+  );
+}
+
+function Merci() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center text-center">
+      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-100">
+        <CircleCheck className="h-7 w-7 text-indigo-700" />
+      </span>
+      <h2 className="mt-5 font-serif text-3xl font-bold text-slate-900">Merci de votre attention</h2>
+      <p className="mt-2 text-[14px] text-slate-600">Place à vos questions.</p>
+      <div className="mt-8 space-y-1 text-[13px] text-slate-700">
+        <p className="font-serif text-base font-semibold">Ghersallah Chahinez &amp; Laouami Tasnim</p>
+        <p>Licence 3 Informatique (Groupe 3) · 2026/2027</p>
+        <p>Université Chadli Bendjedid, El Tarf</p>
+      </div>
+    </div>
+  );
+}
+
+function DosDuLivre() {
+  return (
+    <div className="relative flex h-full w-full flex-col items-center justify-center gap-3 overflow-hidden bg-gradient-to-bl from-[#0b1b3a] via-[#143270] to-[#0b1b3a] text-center text-white p-6">
+      <div className="pointer-events-none absolute inset-3 rounded-md border border-amber-300/40" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-black/40 to-transparent" />
+      
+      {/* 1. أيقونة القبعة */}
+      <GraduationCap className="h-8 w-8 text-amber-300" />
+
+      {/* 2. صورة الـ QR Code تحت القبعة مباشرة */}
+      <div className="bg-white p-2 rounded-xl shadow-lg border border-amber-300/40 my-1">
+        {/* حطي صورة الـ QR Code في مجلد public باسم qrcode.png أو حطي الرابط المباشر لها */}
+        <img 
+          src="/qrcode.png" 
+          alt="QR Code NotebookLM" 
+          className="w-24 h-24 object-contain rounded-lg"
+        />
+      </div>
+      <p className="text-[11px] text-amber-200/90 font-medium">Scannez pour écouter la présentation audio</p>
+
+      {/* 3. الكتابة الخاصة بالجامعة والمقياس */}
+      <div className="space-y-1 mt-1">
+        <p className="font-serif text-base font-semibold">Interaction Homme-Machine</p>
+        <p className="text-xs text-blue-200">Université Chadli Bendjedid · El Tarf · 2026/2027</p>
+      </div>
+    </div>
+  );
+}
+function construirePages(go: (p: number) => void): ReactNode[] {
+  const pages: ReactNode[] = [];
+  pages.push(<Couverture onOpen={() => go(1)} />);
+  pages.push(
+    <Feuille num={1}>
+      <Sommaire go={go} />
+    </Feuille>,
+  );
+  pages.push(
+    <Feuille num={2}>
+      <Introduction />
+    </Feuille>,
+  );
+  REGLES.forEach((r) => {
+    pages.push(
+      <Feuille num={2 * r.id + 1}>
+        <PageRegle regle={r} />
+      </Feuille>,
+    );
+    pages.push(
+      <Feuille num={2 * r.id + 2}>
+        <PageDemo regle={r} />
+      </Feuille>,
+    );
+  });
+  pages.push(
+    <Feuille num={17}>
+      <Conclusion />
+    </Feuille>,
+  );
+  pages.push(
+    <Feuille num={18}>
+      <Merci />
+    </Feuille>,
+  );
+  pages.push(<DosDuLivre />);
+  return pages;
+}
+
+/* ================================================================== */
+/*  Mécanique du livre 3D                                              */
+/* ================================================================== */
+
+function Feuillet({
+  index,
+  total,
+  retourne,
+  spread,
+  front,
+  back,
+}: {
+  index: number;
+  total: number;
+  retourne: boolean;
+  spread: boolean;
+  front: ReactNode;
+  back: ReactNode | null;
+}) {
+  const feuillet: CSSProperties = {
+    position: "absolute",
+    top: 0,
+    left: spread ? W : 0,
+    width: W,
+    height: H,
+    transformOrigin: "left center",
+    transformStyle: "preserve-3d",
+    transform: `rotateY(${retourne ? -180 : 0}deg)`,
+    transition: "transform 0.9s cubic-bezier(0.45, 0.05, 0.25, 1), z-index 0s linear 0.45s",
+    zIndex: retourne ? index : total - index,
+  };
+  const face: CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    backfaceVisibility: "hidden",
+    WebkitBackfaceVisibility: "hidden",
+  };
+  return (
+    <div style={feuillet}>
+      <div style={face} className="overflow-hidden rounded-r-lg shadow-xl">
+        {front}
+      </div>
+      {back !== null && (
+        <div style={{ ...face, transform: "rotateY(180deg)" }} className="overflow-hidden rounded-l-lg shadow-xl">
+          {back}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function abonnerFenetre(rappel: () => void) {
+  window.addEventListener("resize", rappel);
+  return () => window.removeEventListener("resize", rappel);
+}
+const lireFenetre = () => `${window.innerWidth}x${window.innerHeight}`;
+const lireFenetreServeur = () => "1280x800";
 
 export default function Page() {
-  const [actif, setActif] = useState(1);
-  const [mode, setMode] = useState<Mode>("compare");
-  const regle = REGLES.find((r) => r.id === actif) ?? REGLES[0];
-  const precedente = REGLES.find((r) => r.id === regle.id - 1);
-  const suivante = REGLES.find((r) => r.id === regle.id + 1);
-  const { Mauvaise, Bonne } = regle;
+  const [p, setP] = useState(0);
+  const vue = useSyncExternalStore(abonnerFenetre, lireFenetre, lireFenetreServeur);
+  const [vw, vh] = vue.split("x").map(Number);
+  const spread = vw >= 900;
 
-  const aller = (id: number) => {
-    setActif(id);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  const go = useCallback((page: number) => setP(Math.max(0, Math.min(DERNIERE, page))), []);
+  const suivant = useCallback(
+    () =>
+      setP((cur) =>
+        spread ? Math.min(DERNIERE, 2 * Math.ceil(cur / 2) + 2) : Math.min(DERNIERE, cur + 1),
+      ),
+    [spread],
+  );
+  const precedent = useCallback(
+    () => setP((cur) => (spread ? Math.max(0, 2 * (Math.ceil(cur / 2) - 1)) : Math.max(0, cur - 1))),
+    [spread],
+  );
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      const cible = e.target as HTMLElement | null;
+      if (cible && ["INPUT", "TEXTAREA", "SELECT"].includes(cible.tagName)) return;
+      if (e.key === "ArrowRight") suivant();
+      if (e.key === "ArrowLeft") precedent();
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [suivant, precedent]);
+
+  const pages = construirePages(go);
+  const nbFeuillets = spread ? NB_PAGES / 2 : NB_PAGES;
+  const retournes = spread ? Math.ceil(p / 2) : p;
+  const largeurLivre = spread ? 2 * W : W;
+  const echelle = Math.max(0.3, Math.min(1, (vw - 32) / largeurLivre, (vh - 170) / H));
+  const decalage = spread ? (retournes === 0 ? -W / 2 : retournes === nbFeuillets ? W / 2 : 0) : 0;
+
+  let etiquette: string;
+  if (spread) {
+    if (retournes === 0) etiquette = "Couverture";
+    else if (retournes === nbFeuillets) etiquette = "Fin du livre";
+    else etiquette = `Pages ${2 * retournes - 1}–${2 * retournes}`;
+  } else {
+    etiquette = p === 0 ? "Couverture" : p === DERNIERE ? "Fin du livre" : `Page ${p}`;
+  }
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-100 text-slate-900">
-      <header className="sticky top-0 z-40 bg-indigo-900 text-white shadow-lg">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-          <div>
-            <h1 className="text-lg font-bold sm:text-xl">Exposé IHM : Les 7 Règles de Joëlle Coutaz</h1>
-            <p className="text-xs text-indigo-200">Interaction Homme-Machine · démonstrations interactives</p>
-          </div>
-          <div role="group" aria-label="Mode d’affichage" className="flex rounded-lg bg-indigo-800 p-1">
-            {MODES.map(({ id, label, Icon }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setMode(id)}
-                aria-pressed={mode === id}
-                className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition sm:px-3 sm:text-sm ${
-                  mode === id ? "bg-white text-indigo-900" : "text-indigo-100 hover:bg-indigo-700"
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
+    <main className="flex min-h-screen flex-col items-center justify-between bg-[radial-gradient(ellipse_at_center,#1e293b_0%,#0f172a_70%)] px-4 py-4 text-white">
+      <header className="text-center">
+        <h1 className="font-serif text-lg font-semibold sm:text-xl">Exposé IHM : Les 7 Règles de Joëlle Coutaz</h1>
+        <p className="text-xs text-slate-400">Livre interactif · tournez les pages avec les boutons ou les flèches ← →</p>
       </header>
 
-      <div className="mx-auto grid w-full max-w-7xl flex-1 gap-4 px-4 py-4 lg:grid-cols-[250px_1fr]">
-        <nav aria-label="Les 7 règles" className="lg:sticky lg:top-24 lg:self-start">
-          <ul className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
-            {REGLES.map((r) => (
-              <li key={r.id} className="shrink-0">
-                <button
-                  type="button"
-                  onClick={() => aller(r.id)}
-                  aria-current={r.id === actif ? "page" : undefined}
-                  className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition ${
-                    r.id === actif
-                      ? "bg-indigo-700 text-white shadow"
-                      : "bg-white text-slate-700 hover:bg-indigo-50"
-                  }`}
-                >
-                  <span
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                      r.id === actif ? "bg-white text-indigo-700" : "bg-indigo-100 text-indigo-700"
-                    }`}
-                  >
-                    {r.id}
-                  </span>
-                  {r.court}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </nav>
-
-        <main className="space-y-4">
-          <div className="rounded-2xl bg-white p-5 shadow-sm">
-            <h2 className="text-xl font-bold text-indigo-900">
-              Règle {regle.id} : {regle.titre}
-            </h2>
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
-              <div className="rounded-xl bg-indigo-50 p-3">
-                <h3 className="text-sm font-semibold text-indigo-800">La règle</h3>
-                <p className="mt-1 text-sm text-slate-700">{regle.regle}</p>
-              </div>
-              <div className="rounded-xl bg-red-50 p-3">
-                <h3 className="text-sm font-semibold text-red-800">Le problème</h3>
-                <p className="mt-1 text-sm text-slate-700">{regle.probleme}</p>
-              </div>
-              <div className="rounded-xl bg-emerald-50 p-3">
-                <h3 className="text-sm font-semibold text-emerald-800">La solution</h3>
-                <p className="mt-1 text-sm text-slate-700">{regle.solution}</p>
-              </div>
+      <div className="flex w-full flex-1 items-center justify-center py-3">
+        <div className="relative" style={{ width: largeurLivre * echelle, height: H * echelle }}>
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -bottom-5 left-[8%] right-[8%] h-8 rounded-full bg-black/60 blur-2xl"
+          />
+          <div
+            style={{
+              width: largeurLivre,
+              height: H,
+              transform: `scale(${echelle})`,
+              transformOrigin: "top left",
+            }}
+          >
+            <div
+              style={{
+                position: "relative",
+                width: largeurLivre,
+                height: H,
+                perspective: "2600px",
+                transform: `translateX(${decalage}px)`,
+                transition: "transform 0.9s cubic-bezier(0.45, 0.05, 0.25, 1)",
+              }}
+            >
+              {Array.from({ length: nbFeuillets }, (_, i) => (
+                <Feuillet
+                  key={i}
+                  index={i}
+                  total={nbFeuillets}
+                  retourne={i < retournes}
+                  spread={spread}
+                  front={spread ? pages[2 * i] : pages[i]}
+                  back={spread ? pages[2 * i + 1] : null}
+                />
+              ))}
             </div>
           </div>
-
-          <div className={mode === "compare" ? "grid items-start gap-4 lg:grid-cols-2" : "grid gap-4"}>
-            {(mode === "compare" || mode === "bad") && (
-              <Panel key={`mauvaise-${regle.id}`} kind="bad">
-                <Mauvaise />
-              </Panel>
-            )}
-            {(mode === "compare" || mode === "good") && (
-              <Panel key={`bonne-${regle.id}`} kind="good">
-                <Bonne />
-              </Panel>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between">
-            {precedente ? (
-              <button
-                type="button"
-                onClick={() => aller(precedente.id)}
-                className={`${base} bg-white text-slate-700 shadow-sm hover:bg-indigo-50`}
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Règle {precedente.id}
-              </button>
-            ) : (
-              <span />
-            )}
-            {suivante ? (
-              <button
-                type="button"
-                onClick={() => aller(suivante.id)}
-                className={`${base} bg-indigo-700 text-white hover:bg-indigo-800`}
-              >
-                Règle {suivante.id}
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            ) : (
-              <span />
-            )}
-          </div>
-        </main>
+        </div>
       </div>
 
-      <footer className="bg-white py-4 text-center text-xs text-slate-500">
-        Exposé IHM · Les 7 règles de Joëlle Coutaz · Projet académique, Interaction Homme-Machine
-      </footer>
-    </div>
+      <nav aria-label="Navigation du livre" className="w-full max-w-md space-y-2">
+        <div className="h-1 overflow-hidden rounded bg-slate-700">
+          <div
+            className="h-full bg-amber-300 transition-all duration-700"
+            style={{ width: `${(p / DERNIERE) * 100}%` }}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={precedent}
+            disabled={p === 0}
+            className="inline-flex items-center gap-1 rounded-full bg-slate-700 px-4 py-2 text-sm font-medium transition hover:bg-slate-600 disabled:opacity-30"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Précédent
+          </button>
+          <button
+            type="button"
+            onClick={() => go(1)}
+            className="rounded-full px-3 py-2 text-xs text-slate-300 underline-offset-2 hover:text-white hover:underline"
+          >
+            {etiquette} · Sommaire
+          </button>
+          <button
+            type="button"
+            onClick={suivant}
+            disabled={p === DERNIERE}
+            className="inline-flex items-center gap-1 rounded-full bg-amber-300 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-amber-200 disabled:opacity-30"
+          >
+            Suivant
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </nav>
+    </main>
   );
 }
