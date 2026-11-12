@@ -1178,7 +1178,7 @@ function DosDuLivre() {
           className="w-24 h-24 object-contain rounded-lg"
         />
       </div>
-      <p className="text-[11px] text-amber-200/90 font-medium">Scannez pour écouter la présentation audio</p>
+      <p className="text-[11px] text-amber-200/90 font-medium">Scannez pour découvrir la présentation complète</p>
 
       {/* 3. الكتابة الخاصة بالجامعة والمقياس */}
       <div className="space-y-1 mt-1">
